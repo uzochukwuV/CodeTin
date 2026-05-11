@@ -12,6 +12,7 @@ import logging
 from swe_af.fast import fast_router
 from swe_af.fast.prompts import FAST_PLANNER_SYSTEM_PROMPT, fast_planner_task_prompt
 from swe_af.fast.schemas import FastPlanResult, FastTask
+from swe_af.runtime.providers import runtime_to_harness_adapter
 
 logger = logging.getLogger(__name__)
 
@@ -96,8 +97,7 @@ async def fast_plan_tasks(
         additional_context=additional_context,
     )
 
-    # Map 'claude' to 'claude-code' for AgentField router compatibility
-    provider = "claude-code" if ai_provider == "claude" else ai_provider
+    provider = runtime_to_harness_adapter(ai_provider)
     try:
         res = await fast_router.harness(
             prompt=task_prompt,
@@ -124,6 +124,15 @@ async def fast_plan_tasks(
             tags=["fast_planner", "fallback"],
         )
         return _fallback_plan(goal).model_dump()
+
+    # `fallback_used` is a planner-side flag, not an LLM self-assessment.
+    # The codex strict-schema patch strips `default` and forces the field to
+    # be required, so the model has to invent a value and sometimes invents
+    # `true` despite the prompt example showing `false`. Anything reaching
+    # this point parsed cleanly through the harness, so the flag must be
+    # False — only the `_fallback_plan(...)` paths above set it to True.
+    if plan.fallback_used:
+        plan = plan.model_copy(update={"fallback_used": False})
 
     # Truncate to max_tasks using model_copy to avoid class-identity issues
     if len(plan.tasks) > max_tasks:

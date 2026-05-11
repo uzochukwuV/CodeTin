@@ -47,8 +47,12 @@ def _repo_name_from_url(url: str) -> str:
 
 
 def _runtime_to_provider(runtime: str) -> str:
-    """Map runtime string to ai_provider string."""
-    return "claude" if runtime == "claude_code" else "opencode"
+    """Map runtime string to ai_provider string, preserving legacy fast fallback."""
+    if runtime == "claude_code":
+        return "claude"
+    if runtime == "codex":
+        return "codex"
+    return "opencode"
 
 
 @app.reasoner()

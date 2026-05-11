@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 DOCKERFILE = Path(__file__).resolve().parent.parent / "Dockerfile"
+REQUIREMENTS_DOCKER = Path(__file__).resolve().parent.parent / "requirements-docker.txt"
 
 
 @pytest.fixture(scope="module")
@@ -54,3 +55,20 @@ class TestWorkspacesDirectory:
             "/workspaces must be created before EXPOSE to ensure it's part of "
             "the image layer before any volume mount"
         )
+
+
+def test_dockerfile_installs_codex_cli(dockerfile_content: str) -> None:
+    assert "npm install -g @openai/codex" in dockerfile_content
+    assert "SWE_CODEX_AUTH_MODE" in dockerfile_content
+    assert "codex-real" in dockerfile_content
+
+
+def test_dockerfile_preserves_opencode_install(dockerfile_content: str) -> None:
+    assert "https://opencode.ai/install" in dockerfile_content
+    assert "OPENROUTER_API_KEY" in dockerfile_content
+
+
+def test_docker_requirements_pin_cryptography_below_sigill_version() -> None:
+    """Docker image should avoid cryptography 48 SIGILL on Linux/aarch64."""
+    content = REQUIREMENTS_DOCKER.read_text()
+    assert "cryptography<46" in content
