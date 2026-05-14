@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeTin — Cloud IDE + AI Coding</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0d1117; color: #e6edf3; height: 100vh; display: flex; flex-direction: column; }
+        .header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #161b22; border-bottom: 1px solid #30363d; }
+        .header h1 { font-size: 18px; color: #58a6ff; }
+        .mode-toggle { display: flex; gap: 8px; }
+        .mode-toggle button { padding: 6px 16px; border: 1px solid #30363d; background: #21262d; color: #e6edf3; border-radius: 6px; cursor: pointer; font-size: 13px; }
+        .mode-toggle button.active { background: #1f6feb; border-color: #1f6feb; }
+        .container { flex: 1; display: flex; overflow: hidden; }
+
+        /* Consumer Mode */
+        .consumer { display: flex; flex-direction: column; width: 100%; }
+        .consumer .chat-area { flex: 1; padding: 20px; overflow-y: auto; }
+        .consumer .chat-input { display: flex; gap: 8px; padding: 16px; border-top: 1px solid #30363d; background: #161b22; }
+        .consumer .chat-input textarea { flex: 1; padding: 10px; border: 1px solid #30363d; border-radius: 6px; background: #0d1117; color: #e6edf3; resize: none; font-size: 14px; min-height: 48px; }
+        .consumer .chat-input button { padding: 10px 20px; background: #238636; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
+        .consumer .preview-area { height: 40%; border-top: 1px solid #30363d; }
+        .consumer .preview-area iframe { width: 100%; height: 100%; border: none; background: white; }
+        .msg { padding: 10px 14px; margin: 8px 0; border-radius: 8px; max-width: 80%; }
+        .msg.user { background: #1f6feb; margin-left: auto; }
+        .msg.system { background: #21262d; border: 1px solid #30363d; }
+        .msg.error { background: #4a1c1c; border: 1px solid #f85149; }
+        .msg .meta { font-size: 11px; opacity: 0.6; margin-bottom: 4px; }
+
+        /* Developer Mode */
+        .developer { display: flex; width: 100%; }
+        .file-browser { width: 220px; border-right: 1px solid #30363d; overflow-y: auto; padding: 8px; background: #0d1117; }
+        .file-browser .file { padding: 4px 8px; cursor: pointer; border-radius: 4px; font-size: 13px; font-family: monospace; }
+        .file-browser .file:hover { background: #21262d; }
+        .file-browser .file.active { background: #1f6feb; }
+        .file-browser .dir { padding: 4px 8px; font-weight: 600; font-size: 12px; color: #8b949e; }
+        .editor-area { flex: 1; display: flex; flex-direction: column; }
+        .editor-area textarea { flex: 1; padding: 12px; border: none; background: #0d1117; color: #e6edf3; font-family: 'Fira Code', 'Consolas', monospace; font-size: 14px; resize: none; line-height: 1.5; }
+        .editor-toolbar { display: flex; gap: 8px; padding: 8px; background: #161b22; border-bottom: 1px solid #30363d; }
+        .editor-toolbar button { padding: 4px 12px; background: #21262d; border: 1px solid #30363d; color: #e6edf3; border-radius: 4px; cursor: pointer; font-size: 12px; }
+        .terminal-area { height: 200px; border-top: 1px solid #30363d; }
+        .terminal-area textarea { width: 100%; height: 100%; padding: 8px; border: none; background: #0d1117; color: #3fb950; font-family: monospace; font-size: 13px; resize: none; }
+
+        /* Utility */
+        .hidden { display: none !important; }
+        .log { padding: 8px 16px; background: #161b22; border-top: 1px solid #30363d; max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 12px; }
+        .log .line { color: #8b949e; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>CodeTin</h1>
+        <div class="mode-toggle">
+            <button id="btn-consumer" class="active" onclick="setMode('consumer')">AI Build</button>
+            <button id="btn-developer" onclick="setMode('developer')">Developer</button>
+        </div>
+    </div>
+
+    <!-- Consumer Mode -->
+    <div id="consumer-mode" class="container consumer">
+        <div class="chat-area" id="chat-area">
+            <div class="msg system">
+                <div class="meta">CodeTin AI</div>
+                Describe what you want to build. I'll create it, run it, and show you a live preview.
+            </div>
+        </div>
+        <div class="chat-input">
+            <textarea id="prompt-input" placeholder="e.g. Build a todo app with React" rows="2"></textarea>
+            <button onclick="buildFromPrompt()">Build</button>
+        </div>
+        <div class="preview-area">
+            <iframe id="preview-frame" src="about:blank"></iframe>
+        </div>
+    </div>
+
+    <!-- Developer Mode -->
+    <div id="developer-mode" class="container developer hidden">
+        <div class="file-browser" id="file-browser">
+            <div class="dir">Files</div>
+        </div>
+        <div class="editor-area">
+            <div class="editor-toolbar">
+                <button onclick="createProject()">New Project</button>
+                <button onclick="saveFile()">Save</button>
+                <button onclick="runFile()">Run</button>
+                <button onclick="aiAssist()">AI Assist</button>
+            </div>
+            <textarea id="editor" placeholder="// Select or create a file to start editing..." spellcheck="false"></textarea>
+            <div class="terminal-area">
+                <textarea id="terminal-output" readonly placeholder="Terminal output will appear here..."></textarea>
+            </div>
+        </div>
+    </div>
+
+    <div class="log" id="log-area"></div>
+
+    <script>
+        const API = window.location.origin;
+        let currentMode = 'consumer';
+        let currentProject = null;
+        let currentFile = null;
+        let agentWs = null;
+
+        function setMode(mode) {
+            currentMode = mode;
+            document.getElementById('consumer-mode').classList.toggle('hidden', mode !== 'consumer');
+            document.getElementById('developer-mode').classList.toggle('hidden', mode !== 'developer');
+            document.getElementById('btn-consumer').classList.toggle('active', mode === 'consumer');
+            document.getElementById('btn-developer').classList.toggle('active', mode === 'developer');
+        }
+
+        function log(msg) {
+            const area = document.getElementById('log-area');
+            const line = document.createElement('div');
+            line.className = 'line';
+            line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            area.appendChild(line);
+            area.scrollTop = area.scrollHeight;
+        }
+
+        function addChatMsg(text, type = 'system') {
+            const area = document.getElementById('chat-area');
+            const msg = document.createElement('div');
+            msg.className = `msg ${type}`;
+            msg.innerHTML = `<div class="meta">${type === 'user' ? 'You' : 'CodeTin AI'}</div>${text}`;
+            area.appendChild(msg);
+            area.scrollTop = area.scrollHeight;
+        }
+
+        // ── Consumer Mode ─────────────────────────────────────────
+        async function buildFromPrompt() {
+            const input = document.getElementById('prompt-input');
+            const prompt = input.value.trim();
+            if (!prompt) return;
+
+            addChatMsg(prompt, 'user');
+            input.value = '';
+
+            // Create project
+            const res = await fetch(`${API}/api/projects`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: prompt.slice(0, 30), language: 'node'}),
+            });
+            const project = await res.json();
+            currentProject = project;
+            log(`Project created: ${project.project_id}`);
+
+            // Start build
+            const buildRes = await fetch(`${API}/api/chat`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({prompt, project_id: project.project_id}),
+            });
+            const buildData = await buildRes.json();
+            log(`Build started: ${buildData.execution_id}`);
+
+            addChatMsg('Building your app... Watch the logs below for progress.', 'system');
+
+            // Connect to agent stream
+            connectAgentStream(buildData.execution_id);
+        }
+
+        // ── Developer Mode ────────────────────────────────────────
+        async function createProject() {
+            const name = prompt('Project name:', 'my-app');
+            if (!name) return;
+
+            const res = await fetch(`${API}/api/projects`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name, language: 'node'}),
+            });
+            currentProject = await res.json();
+            log(`Developer project created: ${currentProject.project_id}`);
+            loadFiles();
+        }
+
+        async function loadFiles() {
+            if (!currentProject) return;
+            const res = await fetch(`${API}/api/files/${currentProject.project_id}?tree=true`);
+            const tree = await res.json();
+            renderFileTree(tree);
+        }
+
+        function renderFileTree(node, depth = 0) {
+            const browser = document.getElementById('file-browser');
+            if (depth === 0) {
+                browser.innerHTML = `<div class="dir">${node.name}</div>`;
+                depth = 1;
+            }
+            if (node.children) {
+                for (const child of node.children) {
+                    if (child.type === 'directory') {
+                        browser.innerHTML += `<div class="dir" style="padding-left:${depth * 12}px">${child.name}</div>`;
+                        renderFileTree(child, depth + 1);
+                    } else {
+                        browser.innerHTML += `<div class="file" style="padding-left:${depth * 12}px" onclick="openFile('${child.name}')">${child.name}</div>`;
+                    }
+                }
+            }
+        }
+
+        async function openFile(filename) {
+            if (!currentProject) return;
+            const res = await fetch(`${API}/api/files/${currentProject.project_id}/${filename}`);
+            const data = await res.json();
+            document.getElementById('editor').value = data.content;
+            currentFile = filename;
+            document.querySelectorAll('.file').forEach(f => f.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+
+        async function saveFile() {
+            if (!currentProject || !currentFile) return;
+            const content = document.getElementById('editor').value;
+            await fetch(`${API}/api/files/${currentProject.project_id}/${currentFile}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({content}),
+            });
+            log(`Saved ${currentFile}`);
+        }
+
+        async function runFile() {
+            if (!currentProject) return;
+            const cmd = prompt('Command to run:', 'node index.js');
+            if (!cmd) return;
+
+            const res = await fetch(`${API}/api/run`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({project_id: currentProject.project_id, cmd}),
+            });
+            const result = await res.json();
+            const terminal = document.getElementById('terminal-output');
+            terminal.value = result.stdout + (result.stderr ? '\n[stderr]\n' + result.stderr : '');
+            log(`Exit code: ${result.exit_code}`);
+        }
+
+        async function aiAssist() {
+            if (!currentProject) return;
+            const instruction = prompt('What should AI do?');
+            if (!instruction) return;
+
+            const res = await fetch(`${API}/api/execute`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    instruction,
+                    project_id: currentProject.project_id,
+                    context_files: currentFile ? [currentFile] : [],
+                }),
+            });
+            const data = await res.json();
+            log(`AI assist started: ${data.execution_id}`);
+            connectAgentStream(data.execution_id);
+
+            // Reload files after a delay
+            setTimeout(() => loadFiles(), 5000);
+        }
+
+        // ── Agent Stream WebSocket ────────────────────────────────
+        function connectAgentStream(executionId) {
+            if (agentWs) agentWs.close();
+            const wsUrl = `${API.replace('http', 'ws')}/ws/agent-stream/${executionId}`;
+            agentWs = new WebSocket(wsUrl);
+
+            agentWs.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                log(JSON.stringify(data));
+                if (data.type === 'progress') {
+                    addChatMsg(data.message, 'system');
+                } else if (data.type === 'build_complete') {
+                    addChatMsg('Build complete!', 'system');
+                    if (currentProject && currentProject.preview_url) {
+                        document.getElementById('preview-frame').src = currentProject.preview_url;
+                    }
+                } else if (data.type === 'error') {
+                    addChatMsg(data.message, 'error');
+                }
+            };
+        }
+
+        // ── API Endpoints ─────────────────────────────────────────
+        // Consumer chat endpoint
+        async function handleChat(req) {
+            const res = await fetch(`${API}/api/chat`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(req),
+            });
+            return res.json();
+        }
+
+        // Developer execute endpoint
+        async function handleExecute(req) {
+            const res = await fetch(`${API}/api/execute`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(req),
+            });
+            return res.json();
+        }
+    </script>
+</body>
+</html>

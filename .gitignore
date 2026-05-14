@@ -50,3 +50,5 @@ build/
 
 # Pipeline output files
 .claude_output_*.json
+
+*node_modules/
